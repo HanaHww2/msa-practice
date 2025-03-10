@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: product-service
+  config:
+    import:
+      - classpath:/properties/base.yml
+      - classpath:/properties/datasource.yml
+      - classpath:/properties/jpa.yml
+      - classpath:/properties/cloud.yml
+      - classpath:/properties/redis.yml
+  profiles:
+    group:
+      local: local
+      test: test
+      prod: prod
+    active: local

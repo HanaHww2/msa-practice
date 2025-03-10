@@ -1,0 +1,7 @@
+# local 환경
+spring:
+  config.activate.on-profile: local
+  data:
+    redis:
+      host: localhost
+      port: 6379

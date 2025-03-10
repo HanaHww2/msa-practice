@@ -1,0 +1,14 @@
+# local 환경
+spring:
+  config.activate.on-profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      schema: practice
+  sql:
+    init:
+      mode: never
+      data-locations: classpath:db/data.sql # db 시작할때 실행시킬 script (더미 데이터 생성)

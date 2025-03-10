@@ -1,0 +1,9 @@
+# local 환경
+spring:
+  config.activate.on-profile: local
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8181/eureka
