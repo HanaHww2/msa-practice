@@ -70,7 +70,6 @@ public class Order extends BaseEntity {
 		}
 	}
 
-	//주문 취소
 	public void orderCancel() {
 		this.orderStatus = OrderStatus.CANCELED;
 	}

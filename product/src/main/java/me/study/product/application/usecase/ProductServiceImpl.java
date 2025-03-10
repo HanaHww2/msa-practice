@@ -123,9 +123,4 @@ public class ProductServiceImpl implements ProductService {
 
 		return responses;
 	}
-
-	private ProductResponse getProductResponseFromRedis(String key) {
-
-		return redisProductRepository.getAndExpireByKey(key);
-	}
 }

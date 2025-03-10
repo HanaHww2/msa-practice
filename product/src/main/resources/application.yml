@@ -8,6 +8,7 @@ spring:
       - classpath:/properties/jpa.yml
       - classpath:/properties/cloud.yml
       - classpath:/properties/redis.yml
+      - classpath:/properties/kafka.yml
   profiles:
     group:
       local: local

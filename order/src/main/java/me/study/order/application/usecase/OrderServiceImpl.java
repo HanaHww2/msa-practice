@@ -2,6 +2,7 @@ package me.study.order.application.usecase;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +14,8 @@ import me.study.order.global.exception.OrderException;
 import me.study.order.infrastructure.feign.ProductFeignClient;
 import me.study.order.infrastructure.feign.dto.response.ProductResponse;
 import me.study.order.infrastructure.feign.dto.response.ProductsResponse;
+import me.study.order.infrastructure.kafka.KafkaProducer;
+import me.study.order.infrastructure.kafka.event.DecreaseStockEvent;
 import me.study.order.model.entity.Order;
 import me.study.order.model.entity.OrderItem;
 import me.study.order.model.repository.OrderRepository;
@@ -27,6 +30,7 @@ public class OrderServiceImpl implements OrderService {
 
 	private final OrderRepository orderRepository;
 	private final ProductFeignClient productFeignClient;
+	private final KafkaProducer kafkaProducer;
 
 	@Override
 	@Transactional
@@ -64,9 +68,19 @@ public class OrderServiceImpl implements OrderService {
 		orderRepository.save(order);
 
 		// 재고 차감 요청
-		productFeignClient.decreaseStock(decreaseRequests);
+		// productFeignClient.decreaseStock(decreaseRequests);
+		kafkaProducer.sendDecreaseStockEvent(DecreaseStockEvent.of(order.getId(), decreaseRequests));
 
 		return OrderResponse.from(order);
+	}
+
+	@Transactional
+	@Override
+	public boolean cancelOrder(UUID orderId) {
+		Order order = orderRepository.findById(orderId)
+			.orElseThrow(() -> new CustomApiException(OrderException.INVALID_ORDER_ID));
+		order.orderCancel();
+		return true;
 	}
 
 	public boolean validateRequest(

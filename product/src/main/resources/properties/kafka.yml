@@ -1,0 +1,25 @@
+# local 환경
+spring:
+  config.activate.on-profile: local
+  kafka:
+    bootstrap-servers: localhost:9092
+    listener:
+      ack-mode: MANUAL
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: consumer_group01 # Group Id
+      auto-offset-reset: earliest # offset 이 없거나 더 이상 없는 경우 어떻게 처리할지 전략 결정
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.json.trusted.packages: me.study.order.*
+        spring.json.type.mapping: me.study.order.infrastructure.kafka.event.DecreaseStockEvent:me.study.product.infrastructure.kafka.event.DecreaseStockEvent
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+
+kafka:
+  topic:
+    decrease-stock: decrease-stock
+    decrease-stock-error: decrease-stock-error
