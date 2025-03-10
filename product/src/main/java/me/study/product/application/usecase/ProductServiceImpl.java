@@ -1,20 +1,19 @@
 package me.study.product.application.usecase;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import me.study.common.exception.CustomApiException;
 import me.study.product.global.exception.ProductException;
-import me.study.product.global.utils.RedisUtil;
+import me.study.product.infrastructure.RedisProductRepository;
 import me.study.product.model.entity.Product;
 import me.study.product.model.repository.ProductRepository;
 import me.study.product.presentation.dto.request.CreateProductRequest;
@@ -29,8 +28,7 @@ import me.study.product.presentation.dto.response.ProductsResponse;
 public class ProductServiceImpl implements ProductService {
 
 	private final ProductRepository productRepository;
-	private final RedisTemplate<String, Object> redisTemplate;
-
+	private final RedisProductRepository redisProductRepository;
 
 	@Transactional
 	@Override
@@ -44,11 +42,9 @@ public class ProductServiceImpl implements ProductService {
 	@Override
 	public ProductResponse getProduct(UUID productId) {
 
-		String cacheKey = RedisUtil.getProductKey(productId.toString());
-		ProductResponse cachedProductResponse = (ProductResponse) redisTemplate.opsForValue()
-			.get(cacheKey);
+		ProductResponse cachedProductResponse =
+			redisProductRepository.getAndExpireByKey(productId.toString());
 		if (cachedProductResponse != null) {
-			redisTemplate.expire(cacheKey, RedisUtil.RedisTTL.PRODUCT.getTtl(), TimeUnit.SECONDS);
 			return cachedProductResponse;
 		}
 
@@ -56,26 +52,36 @@ public class ProductServiceImpl implements ProductService {
 			.orElseThrow(() -> new CustomApiException(ProductException.INVALID_PRD_ID));
 		ProductResponse productResponse = ProductResponse.from(product);
 
-		redisTemplate.opsForValue().set(cacheKey, productResponse, RedisUtil.RedisTTL.PRODUCT.getTtl(), TimeUnit.SECONDS);
+		redisProductRepository.setWithTtl(productId.toString(), productResponse);
 		return productResponse;
 	}
 
 	@Override
 	public ProductsResponse getProductList(Set<UUID> productIds) {
-		// todo 캐싱 기능 추가
+
 		// 1. 캐시 조회
-		// 2. 전체 데이터 셋 - 캐시된 데이터 셋 디비 조회
-		// 3. 응답 병합 및 반환
+		Map<UUID, ProductResponse> cachedPayload = new HashMap<>();
+		for (UUID productId : productIds) {
+			ProductResponse cachedProductResponse =
+				redisProductRepository.getAndExpireByKey(productId.toString());
+			if (cachedProductResponse != null) {
+				cachedPayload.put(productId, cachedProductResponse);
+				productIds.remove(productId);
+			}
+		}
 
-
+		// 2. db 조회
 		List<Product> products = productRepository.findByIdIn(productIds);
-		Map<UUID, ProductResponse> payload = products.stream()
-			.collect(
-				Collectors.toMap(
-					Product::getId,
-					ProductResponse::from,
-					(existing, replacement) -> existing
-				));
+		Map<UUID, ProductResponse> payload = new HashMap<>();
+		for (Product product : products) {
+			ProductResponse productResponse = ProductResponse.from(product);
+			payload.put(product.getId(), productResponse);
+
+			redisProductRepository.setWithTtl(product.getId().toString(), productResponse);
+		}
+
+		// 3. 응답 반환
+		payload.putAll(cachedPayload);
 		return new ProductsResponse(payload);
 	}
 
@@ -87,11 +93,8 @@ public class ProductServiceImpl implements ProductService {
 			.orElseThrow(() -> new CustomApiException(ProductException.INVALID_PRD_ID));
 		boolean result = product.decreaseStock(request.quantity());
 
-		redisTemplate.opsForValue()
-			.set(RedisUtil.getProductKey(request.productId().toString()),
-				ProductResponse.from(product),
-				RedisUtil.RedisTTL.PRODUCT.getTtl(),
-				TimeUnit.SECONDS);
+		redisProductRepository.setWithTtl(
+			request.productId().toString(), ProductResponse.from(product));
 		return DecreaseProductStockResponse.of(request.productId(), result);
 	}
 
@@ -99,8 +102,30 @@ public class ProductServiceImpl implements ProductService {
 	@Transactional
 	@Override
 	public List<DecreaseProductStockResponse> decreaseStocks(List<DecreaseProductStockRequest> requests) {
-		return requests.stream()
-			.map(req -> this.decreaseStock(req))
+
+		Map<UUID, Integer> quantityMap = requests.stream()
+			.collect(Collectors.toMap(
+				DecreaseProductStockRequest::productId,
+				DecreaseProductStockRequest::quantity,
+				Integer::sum
+			));
+
+		List<Product> products = productRepository.findByIdIn(quantityMap.keySet());
+
+		List<DecreaseProductStockResponse> responses = products.stream()
+			.map(product -> {
+				boolean result = product.decreaseStock(quantityMap.get(product.getId()));
+				// 트랜잭션이 완료되기 전에 캐시를 갱신해도 문제가 없을까.
+				redisProductRepository.setWithTtl(product.getId().toString(), ProductResponse.from(product));
+				return DecreaseProductStockResponse.of(product.getId(), result);
+			})
 			.toList();
+
+		return responses;
+	}
+
+	private ProductResponse getProductResponseFromRedis(String key) {
+
+		return redisProductRepository.getAndExpireByKey(key);
 	}
 }
