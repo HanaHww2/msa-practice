@@ -66,9 +66,9 @@ public class ProductServiceImpl implements ProductService {
 				redisProductRepository.getAndExpireByKey(productId.toString());
 			if (cachedProductResponse != null) {
 				cachedPayload.put(productId, cachedProductResponse);
-				productIds.remove(productId);
 			}
 		}
+		productIds.removeAll(cachedPayload.keySet());
 
 		// 2. db 조회
 		List<Product> products = productRepository.findByIdIn(productIds);
